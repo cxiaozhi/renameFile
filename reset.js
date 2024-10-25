@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const config = require("./config.json");
-const basePath = path.join(path.dirname(__dirname),config.basePath );
+const basePath = path.join(path.dirname(__dirname), config.basePath);
 let fileCount = 0;
 let dirCount = 0;
 
