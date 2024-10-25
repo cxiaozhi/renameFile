@@ -12,7 +12,7 @@ let fileCount = 0; // 统计文件数量
 let dirCount = 0; // 统计文件夹数量
 let cmd = process.argv[2]; // 操作命令 1.拷贝文件 2.替换文件 3.删除多余文件
 const allFilePath = []; // 所有文件路径
-const extNameList = [".prefab", ".fire", ".js", ".png", ".jpg", ".jpeg"]; // 要处理的文件类型
+const extNameList = [".prefab", ".fire", ".js", ".png", ".jpg", ".jpeg", ".anim", ".fnt"]; // 要处理的文件类型
 
 // 创建一个 logger 实例
 const logger = winston.createLogger({
@@ -70,19 +70,23 @@ function saveMetaData(filePath) {
             logger.info("meta文件不存在: " + newMetaFilePath);
             return;
         }
-        let new_uuid, old_uuid;
+        let new_uuid, old_uuid, old_rawTextureUuid, new_rawTextureUuid;
         if (ext == ".js") {
             old_uuid = utils.compressUuid_Test(JSON.parse(oldMetaContent).uuid);
             new_uuid = utils.compressUuid_Test(JSON.parse(newMetaContent).uuid);
         } else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
             old_uuid = JSON.parse(oldMetaContent).subMetas[old_className].uuid;
             new_uuid = JSON.parse(newMetaContent).subMetas[new_className].uuid;
-        } else if (ext == ".prefab" || ext == ".fire") {
+            old_rawTextureUuid = JSON.parse(oldMetaContent).subMetas[old_className].rawTextureUuid;
+            new_rawTextureUuid = JSON.parse(newMetaContent).subMetas[new_className].rawTextureUuid;
+        } else if (ext == ".prefab" || ext == ".fire" || ext == ".anim" || ext == ".fnt") {
             old_uuid = JSON.parse(oldMetaContent).uuid;
             new_uuid = JSON.parse(newMetaContent).uuid;
+        } else {
+            console.log(ext + "未处理UUID--->old_uuid:%s new_uuid:%s", JSON.parse(oldMetaContent).uuid, JSON.parse(newMetaContent).uuid);
         }
         if (old_uuid && new_uuid) {
-            allFilePath.push({ newfilePath, oldFilePath: filePath, old_uuid, new_uuid, new_className, old_className });
+            allFilePath.push({ newfilePath, oldFilePath: filePath, old_uuid, new_uuid, new_className, old_className, old_rawTextureUuid, new_rawTextureUuid });
         }
     }
 }
@@ -117,10 +121,6 @@ function scanFile(basePath, callback) {
 function replacePrefab(filePath) {
     const ext = path.extname(filePath);
     const oldName = path.basename(filePath, ext);
-    if (ext !== ".prefab" && ext !== ".fire") {
-        return;
-    }
-
     if (oldName.startsWith(config.prefix) && oldName.endsWith(config.suffix)) {
         let oldContent = fs.readFileSync(filePath, "utf-8");
         let newContent = oldContent;
@@ -133,6 +133,46 @@ function replacePrefab(filePath) {
             const oldReg = new RegExp(utils.escapeRegExp(old_uuid), "g");
             if (oldReg.test(newContent) && !newReg.test(newContent)) {
                 newContent = newContent.replace(oldReg, new_uuid);
+            }
+        }
+        let newHash = crypto.createHash("sha256").update(newContent).digest("hex");
+        if (oldHash !== newHash) {
+            // 如果内容发生变化，则写入文件
+            fs.writeFileSync(filePath, newContent, "utf-8");
+            logger.info("文件:" + filePath + " UUID已替换");
+        } else {
+            logger.info("文件:" + filePath + " 内容无变化");
+        }
+    }
+}
+
+/**
+ * 替换文字中图片引用
+ * @param {*} filePath
+ */
+function replaceFnt(filePath) {
+    const tempext = path.extname(filePath);
+    const tempOldName = path.basename(filePath, tempext);
+    const ext = path.extname(tempOldName);
+    const oldName = path.basename(tempOldName, ext);
+    if (oldName.startsWith(config.prefix) && oldName.endsWith(config.suffix)) {
+        let oldContent = fs.readFileSync(filePath, "utf-8");
+        let newContent = oldContent;
+        let oldHash = crypto.createHash("sha256").update(oldContent).digest("hex");
+        for (let index = 0; index < allFilePath.length; index++) {
+            const element = allFilePath[index];
+            const new_rawTextureUuid = element.new_rawTextureUuid;
+            const old_rawTextureUuid = element.old_rawTextureUuid;
+            if (new_rawTextureUuid && old_rawTextureUuid) {
+                const newReg = new RegExp(utils.escapeRegExp(new_rawTextureUuid), "g");
+                const oldReg = new RegExp(utils.escapeRegExp(old_rawTextureUuid), "g");
+                // if (old_rawTextureUuid == "9f8c66db-4721-4ac9-98c1-e2f0c477cb25") {
+                //     console.log(new_rawTextureUuid, old_rawTextureUuid, newContent);
+                //     exit();
+                // }
+                if (oldReg.test(newContent) && !newReg.test(newContent)) {
+                    newContent = newContent.replace(oldReg, new_rawTextureUuid);
+                }
             }
         }
         let newHash = crypto.createHash("sha256").update(newContent).digest("hex");
@@ -181,10 +221,12 @@ function replaceJSClassName(filePath) {
 // 替换资源
 function replaceAssets(filePath) {
     const ext = path.extname(filePath);
-    if (ext === ".prefab" || ext === ".fire") {
+    if (ext === ".prefab" || ext === ".fire" || ext === ".anim") {
         replacePrefab(filePath);
     } else if (ext === ".js") {
         replaceJSClassName(filePath);
+    } else if (filePath.includes(".fnt") && filePath.includes(".meta")) {
+        replaceFnt(filePath); // 替换文字图片引用
     }
 }
 
