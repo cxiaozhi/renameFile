@@ -98,8 +98,10 @@ function scanFile(basePath, callback) {
         const filePath = path.join(basePath, fileName);
         const isDir = fs.statSync(filePath).isDirectory();
         if (isDir) {
-            dirCount++;
-            scanFile(filePath, callback);
+            if (fileName != "spine") {
+                dirCount++;
+                scanFile(filePath, callback);
+            }
         } else {
             fileCount++;
             callback(filePath);
@@ -195,13 +197,13 @@ function startCopy() {
     logger.info("扫描结束，共扫描到" + fileCount + "个文件，" + dirCount + "个文件夹");
     fileCount = 0;
     dirCount = 0;
-    logger.info(allFilePath.length + "个文件需要替换");
 }
 
 /**
  * 开始替换
  */
 function startReplace() {
+    logger.info(allFilePath.length + "个文件需要替换");
     logger.info("开始替换文件", "开始扫描文件");
     scanFile(basePath, replaceAssets);
     logger.info("替换结束", "扫描结束，共扫描到" + fileCount + "个文件，" + dirCount + "个文件夹");
@@ -218,8 +220,6 @@ function deleteExtraFile(filePath) {
         let secondExt = path.extname(oldName);
         oldName = path.basename(oldName, secondExt);
         ext = secondExt + ext;
-        console.log(oldName);
-        return
     }
     if (oldName.startsWith(config.prefix) && oldName.endsWith(config.suffix)) return;
     let copyFileName = config.prefix + oldName + config.suffix;
